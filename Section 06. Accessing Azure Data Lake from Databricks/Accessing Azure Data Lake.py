@@ -102,3 +102,42 @@ display(df)
 # MAGIC Azure 구독에서 리소스에 접근할 수 있는 권한을 갖기 위해 Azure Active Directory에 등록된 사용자나 그룹에게 RBAC를 이용하여 권한을 부여할 수 있습니다. 
 # MAGIC 
 # MAGIC 이를 통해 Azure 구독에서 리소스에 대한 액세스를 효율적으로 관리할 수 있습니다.
+# MAGIC 
+# MAGIC 
+# MAGIC 1. Service Principal 등록 (Service Principal은 Azure AD 애플리케이션 또는 Active Directory 애플리케이션이라고도 합니다.)
+# MAGIC 1. Service Principal에 대한 secret 생성
+# MAGIC 1. Service Principal을 통해 스토리지 계정에 액세스하도록 Databricks 구성 (Spark 구성 파라미터를 통해 가능)
+# MAGIC 1. Service Principal에 대해 데이터 레이크에 역할 할당
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC 
+# MAGIC Azure Portal 계정에 권한이 없어 회사 계정으로는 테스트 불가
+
+# COMMAND ----------
+
+service_credential = dbutils.secrets.get(scope="<scope>",key="<service-credential-key>")
+
+spark.conf.set("fs.azure.account.auth.type.<storage-account>.dfs.core.windows.net", "OAuth")
+spark.conf.set("fs.azure.account.oauth.provider.type.<storage-account>.dfs.core.windows.net", "org.apache.hadoop.fs.azurebfs.oauth2.ClientCredsTokenProvider")
+spark.conf.set("fs.azure.account.oauth2.client.id.<storage-account>.dfs.core.windows.net", "<application-id>")
+spark.conf.set("fs.azure.account.oauth2.client.secret.<storage-account>.dfs.core.windows.net", service_credential)
+spark.conf.set("fs.azure.account.oauth2.client.endpoint.<storage-account>.dfs.core.windows.net", "https://login.microsoftonline.com/<directory-id>/oauth2/token")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC 
+# MAGIC #### Cluster 범위의 인증
+# MAGIC 
+# MAGIC 기존 세션 단위의 인증이 아닌 클러스터 단위의 인증 <br>
+# MAGIC 모든 클러스터 사용자에게 동일한 권한을 주는 경우 유용하며, 대규모 프로젝트에서는 부적절할 수 있습니다. <br>
+# MAGIC <br>
+# MAGIC 
+# MAGIC 1. Compute -> 설정하려는 클러스터 선택
+# MAGIC 1. Advanced options 선택
+# MAGIC 1. spark config 에 설정 내용 넣기
+# MAGIC 
+# MAGIC 클러스터 설정 내부에 secret을 하드코딩하는 것은 좋은 방법은 아닙니다.<br>
+# MAGIC 추후 key-Vault를 사용하는 방법으로 수정이 필요합니다.
