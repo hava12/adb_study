@@ -45,3 +45,115 @@ display(dbutils.fs.ls('/'))
 # COMMAND ----------
 
 display(dbutils.fs.ls('/FileStore'))
+
+# COMMAND ----------
+
+display(spark.read.csv('/FileStore/circuits.csv'))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC 
+# MAGIC #### DBFS 마운트의 이점
+# MAGIC 
+# MAGIC 1. Credential 없이 Data에 Access할 수 있다.
+# MAGIC 1. file semantics을 이용하여 긴 URL을 매번 작성할 필요가 없다.
+# MAGIC 1. Azure Storage의 모든 이점을 얻을 수 있다. (DBFS는 추상화 계층일 뿐이다.)
+# MAGIC 
+# MAGIC ##### Azure Data Lake에 엑세스하기 위한 권장 솔루션 - Unity Catalog
+# MAGIC 2022년 말에 GA
+# MAGIC 
+# MAGIC 그러나 현재까지는 마운트 방식을 많이 사용하고 있기 때문에 알고 있어야 함
+# MAGIC 
+# MAGIC Mount를 생성하기 위해서는 Service Principal을 생성해야 합니다.
+# MAGIC 
+# MAGIC #### Service Principal을 사용하여 Azure Data Lake에 Mount
+# MAGIC 
+# MAGIC 
+# MAGIC <b>Step</b>
+# MAGIC 1. key vault로부터 client_id, tanent_id, client_secret을 얻어옵니다.
+# MAGIC 1. spark config를 세팅합니다.
+# MAGIC 1. Storage에 마운트하기 위해 file system utilty를 호출합니다. 
+# MAGIC 1. 마운트와 관련된 다른 파일 시스템 유틸리티 탐색
+# MAGIC 
+# MAGIC https://learn.microsoft.com/ko-kr/azure/databricks/dbfs/mounts
+
+# COMMAND ----------
+
+dbutils.secrets.help()
+
+dbutils.secrets.listScopes()
+
+dbutils.secrets.list('adbtesthudsonstorage-scope')
+
+# COMMAND ----------
+
+
+client_id = dbutils.secrets.get(scope="adbtesthudsonstorage-scope", key="adb-test-hudson-databricks-clientid")
+tenant_id = dbutils.secrets.get(scope="adbtesthudsonstorage-scope", key="adb-test-hudson-databricks-tenantid")
+client_secret = dbutils.secrets.get(scope="adbtesthudsonstorage-scope", key="adb-test-hudson-databricks-client-secret")
+
+configs = {
+    "fs.azure.account.auth.type": "OAuth",
+    "fs.azure.account.oauth.provider.type": "org.apache.hadoop.fs.azurebfs.oauth2.ClientCredsTokenProvider",
+    "fs.azure.account.oauth2.client.id": client_id,
+    "fs.azure.account.oauth2.client.secret": client_secret,
+    "fs.azure.account.oauth2.client.endpoint": f"https://login.microsoftonline.com/{tenant_id}/oauth2/token"
+}
+
+
+# Optionally, you can add <directory-name> to the source URI of your mount point.
+dbutils.fs.mount(
+  source = "abfss://demo@adbtesthudsonstorage.dfs.core.windows.net",
+  mount_point = "/mnt/adbtesthudsonstorage/demo",
+  extra_configs = configs
+)
+
+# COMMAND ----------
+
+def mount(storage_account_name, container_name):
+
+    client_id = dbutils.secrets.get(scope="adbtesthudsonstorage-scope", key="adb-test-hudson-databricks-clientid")
+    tenant_id = dbutils.secrets.get(scope="adbtesthudsonstorage-scope", key="adb-test-hudson-databricks-tenantid")
+    client_secret = dbutils.secrets.get(scope="adbtesthudsonstorage-scope", key="adb-test-hudson-databricks-client-secret")
+
+    configs = {
+        "fs.azure.account.auth.type": "OAuth",
+        "fs.azure.account.oauth.provider.type": "org.apache.hadoop.fs.azurebfs.oauth2.ClientCredsTokenProvider",
+        "fs.azure.account.oauth2.client.id": client_id,
+        "fs.azure.account.oauth2.client.secret": client_secret,
+        "fs.azure.account.oauth2.client.endpoint": f"https://login.microsoftonline.com/{tenant_id}/oauth2/token"
+    }
+    
+    if any(mount.mountPoint == f"/mnt/{storage_account_name}/{container_name}" for mount in dbutils.fs.mounts()):
+        dbutils.fs.unmount(f"/mnt/{storage_account_name}/{container_name}")
+
+    dbutils.fs.mount(
+      source = f"abfss://{container_name}@{storage_account_name}.dfs.core.windows.net",
+      mount_point = f"/mnt/{storage_account_name}/{container_name}",
+      extra_configs = configs
+    )
+    display(dbutils.fs.mounts())
+
+# COMMAND ----------
+
+mount('adbtesthudsonstorage', 'demo');
+mount('adbtesthudsonstorage', 'presentation');
+mount('adbtesthudsonstorage', 'processed');
+mount('adbtesthudsonstorage', 'raw');
+
+
+# COMMAND ----------
+
+display(dbutils.fs.ls("/mnt/adbtesthudsonstorage/demo"))
+
+# COMMAND ----------
+
+display(dbutils.fs.mounts())
+
+# COMMAND ----------
+
+dbutils.fs.unmount("/mnt/adbtesthudsonstorage/demo")
+dbutils.fs.unmount("/mnt/adbtesthudsonstorage/raw")
+dbutils.fs.unmount("/mnt/adbtesthudsonstorage/presentation")
+dbutils.fs.unmount("/mnt/adbtesthudsonstorage/processed")

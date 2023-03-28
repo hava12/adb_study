@@ -111,11 +111,8 @@ display(df)
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC 
-# MAGIC Azure Portal 계정에 권한이 없어 회사 계정으로는 테스트 불가
-
-# COMMAND ----------
+client_id = ""
+tanent_id = ""
 
 service_credential = dbutils.secrets.get(scope="<scope>",key="<service-credential-key>")
 
